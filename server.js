@@ -136,6 +136,35 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
+// 5. 상품 삭제 API (DELETE) - Supabase DB에서 삭제하기
+app.delete('/api/products/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const { data, error } = await supabase
+      .from('products')
+      .delete()
+      .eq('id', id)
+      .select();
+
+    if (error) {
+      console.error('❌ Supabase 삭제 에러:', error.message);
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    // 만약 해당 id의 상품이 없어서 삭제된 데이터가 없는 경우
+    if (!data || data.length === 0) {
+      return res.status(404).json({ success: false, message: '삭제할 매물을 찾을 수 없습니다.' });
+    }
+
+    console.log(`🗑️ 상품 ID ${id} 삭제 완료`);
+    res.json({ success: true, message: '매물이 성공적으로 삭제되었습니다.' });
+  } catch (error) {
+    console.error('❌ 서버 내부 에러:', error.message);
+    res.status(500).json({ success: false, message: '상품 삭제 중 서버 에러 발생' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Supabase DB 연동 완료! 서버 실행 중: http://localhost:${PORT}`);
 });
