@@ -11,7 +11,7 @@ app.use(express.json());
 
 // Supabase 접속 설정 (환경 변수 사용)
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY; // 설정한 이름에 맞게 선택
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -48,9 +48,9 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// 2. 상품 등록 (POST) - Supabase DB에 저장하기
+// 2. 상품 등록 (POST) - user_id 포함하여 DB에 저장
 app.post('/api/products', async (req, res) => {
-  const { title, price, description, location } = req.body;
+  const { title, price, description, location, user_id } = req.body;
 
   if (!title || !price) {
     return res.status(400).json({ success: false, message: '제목과 가격을 입력해 주세요.' });
@@ -66,6 +66,7 @@ app.post('/api/products', async (req, res) => {
           description,
           location: location || '캠퍼스 내',
           time: '방금 전',
+          user_id: user_id || null, // 작성자 user_id 저장
         },
       ])
       .select();
@@ -98,7 +99,7 @@ app.post('/api/signup', async (req, res) => {
       return res.status(400).json({ success: false, message: error.message });
     }
 
-    res.json({ success: true, message: '회원가입 성공! (이메일 인증이 켜져있다면 인증을 확인해주세요)', data });
+    res.json({ success: true, message: '회원가입 성공!', data });
   } catch (error) {
     console.error('❌ 서버 내부 에러:', error.message);
     res.status(500).json({ success: false, message: '회원가입 처리 중 서버 에러 발생' });
@@ -127,7 +128,7 @@ app.post('/api/login', async (req, res) => {
     res.json({ 
       success: true, 
       message: '로그인 성공!', 
-      session: data.session, // 사용자 토큰 정보 등
+      session: data.session,
       user: data.user 
     });
   } catch (error) {
@@ -136,31 +137,40 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// 5. 상품 삭제 API (DELETE) - Supabase DB에서 삭제하기
+// 5. 상품 삭제 API (DELETE) - 본인 작성 글 검증 후 삭제
 app.delete('/api/products/:id', async (req, res) => {
   const { id } = req.params;
+  const { user_id } = req.body; // 요청자의 user_id
 
   try {
-    const { data, error } = await supabase
+    // 해당 매물의 작성자 user_id 조회
+    const { data: product, error: fetchError } = await supabase
+      .from('products')
+      .select('user_id')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !product) {
+      return res.status(404).json({ success: false, message: '매물을 찾을 수 없습니다.' });
+    }
+
+    // 작성자가 지정되어 있고, 요청자와 다르면 삭제 거부
+    if (product.user_id && product.user_id !== user_id) {
+      return res.status(403).json({ success: false, message: '본인이 작성한 매물만 삭제할 수 있습니다.' });
+    }
+
+    // DB 삭제 실행
+    const { error: deleteError } = await supabase
       .from('products')
       .delete()
-      .eq('id', id)
-      .select();
+      .eq('id', id);
 
-    if (error) {
-      console.error('❌ Supabase 삭제 에러:', error.message);
-      return res.status(400).json({ success: false, message: error.message });
-    }
+    if (deleteError) throw deleteError;
 
-    // 만약 해당 id의 상품이 없어서 삭제된 데이터가 없는 경우
-    if (!data || data.length === 0) {
-      return res.status(404).json({ success: false, message: '삭제할 매물을 찾을 수 없습니다.' });
-    }
-
-    console.log(`🗑️ 상품 ID ${id} 삭제 완료`);
-    res.json({ success: true, message: '매물이 성공적으로 삭제되었습니다.' });
+    console.log(`🗑️ 상품 ID ${id} 삭제 완료 (요청 유저: ${user_id})`);
+    res.json({ success: true, message: '매물이 삭제되었습니다.' });
   } catch (error) {
-    console.error('❌ 서버 내부 에러:', error.message);
+    console.error('❌ 삭제 에러:', error.message);
     res.status(500).json({ success: false, message: '상품 삭제 중 서버 에러 발생' });
   }
 });
