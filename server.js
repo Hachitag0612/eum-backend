@@ -9,9 +9,9 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Supabase 접속 설정
-const SUPABASE_URL = 'https://hjnnhotbvajwlmjxqaok.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_7EC8DUQZ2bRvh4qRkJHgKg_r2XfWgL4'; // 본인 키 입력
+// Supabase 접속 설정 (환경 변수 사용)
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_KEY; // 설정한 이름에 맞게 선택
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
@@ -76,6 +76,63 @@ app.post('/api/products', async (req, res) => {
   } catch (error) {
     console.error('DB 저장 에러:', error.message);
     res.status(500).json({ success: false, message: '상품 등록에 실패했습니다.' });
+  }
+});
+
+// 3. 회원가입 API (POST)
+app.post('/api/signup', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: '이메일과 비밀번호를 입력해 주세요.' });
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) {
+      console.error('❌ 회원가입 에러:', error.message);
+      return res.status(400).json({ success: false, message: error.message });
+    }
+
+    res.json({ success: true, message: '회원가입 성공! (이메일 인증이 켜져있다면 인증을 확인해주세요)', data });
+  } catch (error) {
+    console.error('❌ 서버 내부 에러:', error.message);
+    res.status(500).json({ success: false, message: '회원가입 처리 중 서버 에러 발생' });
+  }
+});
+
+// 4. 로그인 API (POST)
+app.post('/api/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: '이메일과 비밀번호를 입력해 주세요.' });
+  }
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      console.error('❌ 로그인 에러:', error.message);
+      return res.status(400).json({ success: false, message: '이메일 또는 비밀번호가 올바르지 않습니다.' });
+    }
+
+    res.json({ 
+      success: true, 
+      message: '로그인 성공!', 
+      session: data.session, // 사용자 토큰 정보 등
+      user: data.user 
+    });
+  } catch (error) {
+    console.error('❌ 서버 내부 에러:', error.message);
+    res.status(500).json({ success: false, message: '로그인 처리 중 서버 에러 발생' });
   }
 });
 
